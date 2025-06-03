@@ -1,25 +1,39 @@
-# views.py
-from rest_framework import status
-from rest_framework.response import Response
+from django.contrib.auth import authenticate
 from rest_framework.views import APIView
-from .serializers import UserSignupSerializer
+from rest_framework.response import Response
+from rest_framework import status
+from .serializers import LoginSerializer
+from django.contrib.auth.models import User
 
 
-class UserSignupView(APIView):
-    """
-    API view for user signup.
-    """
+class LoginView(APIView):
+    permission_classes = []  # No auth required
 
-    def post(self, request, *args, **kwargs):
-        serializer = UserSignupSerializer(data=request.data)
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+            )
 
-        if serializer.is_valid():
-            user = serializer.save()
+        username = serializer.validated_data["username"]
+        password = serializer.validated_data["password"]
+        user = authenticate(username=username, password=password)
 
-            # Return success response with user data (excluding password)
-            response_data = {
-                "status": "success",
-                "message": "User registered successfully",
+        if user is None:
+            return Response(
+                {"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not user.is_active:
+            return Response(
+                {"detail": "User account is inactive."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        return Response(
+            {
+                "message": "Login successful.",
                 "user": {
                     "id": user.id,
                     "username": user.username,
@@ -27,16 +41,34 @@ class UserSignupView(APIView):
                     "first_name": user.first_name,
                     "last_name": user.last_name,
                 },
-            }
-
-            return Response(response_data, status=status.HTTP_201_CREATED)
-
-        # Return validation errors
-        return Response(
-            {
-                "status": "error",
-                "message": "Validation error",
-                "errors": serializer.errors,
             },
-            status=status.HTTP_400_BAD_REQUEST,
+            status=status.HTTP_200_OK,
         )
+
+
+from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .serializers import UserSignupSerializer
+
+
+class UserSignupView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = UserSignupSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response(
+                {
+                    "message": "User registered successfully.",
+                    "user": {
+                        "id": user.id,
+                        "username": user.username,
+                        "email": user.email,
+                    },
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
